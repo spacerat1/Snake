@@ -1,0 +1,10 @@
+10:Der
+9:Spieler
+8:ganz
+7:oben
+6:hat
+5:eine
+4:ganz
+3:kleine
+2:Schlange.
+1:...
