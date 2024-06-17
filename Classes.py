@@ -147,8 +147,8 @@ class Game:
                     self.menu.is_active = False
                     # self.in_progress = self.new_game(self.snake, self.ghost, self.apple, self.highscore, self.SNAKE_UPDATE, self.GHOST_TIMER)
                     self.in_progress = self.new_game()
-                    
-                    
+
+
             self.background.draw()
             for event in pg.event.get():
                 if event.type == pg.QUIT:
@@ -170,11 +170,15 @@ class Game:
                         self.menu.is_active = True
                     elif event.key == pg.K_SPACE and self.snake.status == 'paused':
                         self.snake.status = 'active'
-                
+
                 if not self.GHOST_MOVES and event.type == self.GHOST_TIMER:
                     self.GHOST_MOVES = True
 
-                if event.type == self.GHOST_UPDATE and self.EXPERT_MODE and not self.snake.status == 'paused':
+                if (
+                    event.type == self.GHOST_UPDATE
+                    and self.EXPERT_MODE
+                    and self.snake.status != 'paused'
+                ):
                     self.ghost.select()
 
                 if event.type == self.SNAKE_UPDATE and not self.menu.is_active:
@@ -342,10 +346,9 @@ class Background:
 class Apple:
     def __init__(self, game):
         self.screen = game.screen
-        symbol_list = []
         picture = pg.image.load(f"{GRAPHICS_PATH}\\items\\apple.png").convert_alpha()
         picture = pg.transform.scale(picture, (WIDTH // X_FIELDS, HEIGHT // Y_FIELDS))
-        symbol_list.append(picture)
+        symbol_list = [picture]
         picture = pg.image.load(f"{GRAPHICS_PATH}\\items\\rat.png").convert_alpha()
         picture = pg.transform.scale(picture, (WIDTH // X_FIELDS, HEIGHT // Y_FIELDS))
         symbol_list.append(picture)
@@ -435,11 +438,7 @@ class Snake:
                 graphic = self.tail_graphics[self.snake_body[idx-1][1]] # direction of the last segment before the tail  
             else:
                 if self.snake_body[idx-1][1] == self.snake_body[idx][1]:
-                    if direction in ('right', 'left'):
-                        tile = 'horizontal'
-                    else:
-                        tile = 'vertical'
-                
+                    tile = 'horizontal' if direction in ('right', 'left') else 'vertical'
                 if (self.snake_body[idx][1] == 'right' and self.snake_body[idx-1][1] == 'up') or (self.snake_body[idx][1] == 'down' and self.snake_body[idx-1][1] == 'left'):
                     tile = 'topleft'
                 elif (self.snake_body[idx][1] == 'right' and self.snake_body[idx-1][1] == 'down') or (self.snake_body[idx][1] == 'up' and self.snake_body[idx-1][1] == 'left'):
@@ -449,7 +448,7 @@ class Snake:
                 elif (self.snake_body[idx][1] == 'left' and self.snake_body[idx-1][1] == 'down') or (self.snake_body[idx][1] == 'up' and self.snake_body[idx-1][1] == 'right'):
                     tile = 'bottomright'
                 graphic = self.body_graphics[tile]
-            
+
             self.screen.blit(graphic, (x,y))
             if self.status == 'paused':
                 label = pg.font.SysFont('Arial', 40, bold = True).render('Zum Weiterspielen Leertaste drücken.', True, pg.Color('brown2'))
@@ -464,50 +463,53 @@ class Snake:
         if self.moves > 1_000_000_000:
             self.moves = 0
         head_x, head_y = self.snake_body[0][0]
-        if self.direction == 'left':
-            x = head_x - 1
-            y = head_y  
-        elif self.direction == 'right':
-            x = head_x + 1
-            y = head_y
-        elif self.direction == 'up':    
-            x = head_x
-            y = head_y - 1
-        elif self.direction == 'down':
+        if self.direction == 'down':
             x = head_x
             y = head_y + 1
 
+        elif self.direction == 'left':
+            x = head_x - 1
+            y = head_y
+        elif self.direction == 'right':
+            x = head_x + 1
+            y = head_y
+        elif self.direction == 'up':
+            x = head_x
+            y = head_y - 1
         new_head = (x,y)
-        
+
         # check if snake leaves the board or bites itself
         if X_FIELDS-1 < x or x < 0 or Y_FIELDS-1 < y or y < 0 or any((x,y) == coords for coords, _ in self.snake_body):
-            return 'dead'   
+            return 'dead'
         if EXPERT_MODE and any((x,y) == coords for coords, _ in ghost.actual_body):
             return 'dead'
-        
+
         # check if snake eats the apple
         self.moving_sound.play()
         if new_head == apple.position:
-            if apple.item == apple.symbol[0]:
-                self.eating_sound.play()
-            else:
-                self.rat_eating.play()
-            if self.game.EXPERT_MODE:
-                self.game.ghost.wait += self.speed
-            apple.generate(self)
-            self.snake_body.appendleft((new_head, self.direction)) # type: ignore
-             
-            self.score += 1
-            if self.score % 10 == 0 and self.score > 0:
-                if self.speed > 100:
-                    self.speed -= 10
-                    if self.game.EXPERT_MODE:
-                        self.game.ghost.ghost_speed -= 10
-                        pg.time.set_timer(self.game.GHOST_UPDATE, self.game.ghost.ghost_speed)
-                    pg.time.set_timer(self.game.SNAKE_UPDATE, self.speed) # each 10 apples the speed will raise
+            self.fruit_has_been_eaten(apple, new_head)
         else:
             self.snake_body.appendleft((new_head, self.direction)) # type: ignore
             self.snake_body.pop()
+
+    
+    def fruit_has_been_eaten(self, apple:Apple, new_head:tuple):
+        if apple.item == apple.symbol[0]:
+            self.eating_sound.play()
+        else:
+            self.rat_eating.play()
+        if self.game.EXPERT_MODE:
+            self.game.ghost.wait += self.speed
+        apple.generate(self)
+        self.snake_body.appendleft((new_head, self.direction)) # type: ignore
+
+        self.score += 1
+        if self.score % 10 == 0 and self.score > 0 and self.speed > 100:
+            self.speed -= 10
+            if self.game.EXPERT_MODE:
+                self.game.ghost.ghost_speed -= 10
+                pg.time.set_timer(self.game.GHOST_UPDATE, self.game.ghost.ghost_speed)
+            pg.time.set_timer(self.game.SNAKE_UPDATE, self.speed)
 
 
     def game_over(self, screen:pg.Surface, background:Background, apple:Apple):
@@ -643,12 +645,12 @@ class Ghost(Snake):
 
         if self.wait >0:
             self.wait -= self.game.snake.speed // 4
-            
+
 
         if not self.game.GHOST_MOVES:
             self.actual_body = self.body_list[0]
             self.actual_fruit = []
-        elif self.game.GHOST_MOVES:
+        else:
             self.actual_body = self.body_list.popleft()
             if len(self.fruit_list) > 0:
                 self.actual_fruit = self.fruit_list.popleft()
@@ -658,7 +660,7 @@ class Ghost(Snake):
     def draw(self, apple:Apple, GHOST_MOVES:bool):
         length_of_snake = len(self.actual_body)
         eyes_closed = '_2' if self.moves % 30 == 0 else '' # every 30 moves the snake closes his eyes
-        
+
         # draw ghost fruit
         if GHOST_MOVES and self.actual_fruit:
             fruit, position = self.actual_fruit
@@ -667,7 +669,7 @@ class Ghost(Snake):
                 upper_left_corner_x = WIDTH // X_FIELDS 
                 upper_left_corner_y = HEIGHT // Y_FIELDS
                 self.screen.blit(fruit, (x* upper_left_corner_x, y* upper_left_corner_y))  
-        
+
         # draw ghost snake
         for idx, (coords, direction) in enumerate(self.actual_body):
             
@@ -680,11 +682,7 @@ class Ghost(Snake):
                 graphic = self.tail_graphics[self.actual_body[idx-1][1]] # direction of the last segment before the tail  
             else:
                 if self.actual_body[idx-1][1] == self.actual_body[idx][1]:
-                    if direction in ('right', 'left'):
-                        tile = 'horizontal'
-                    else:
-                        tile = 'vertical'
-                
+                    tile = 'horizontal' if direction in ('right', 'left') else 'vertical'
                 if (self.actual_body[idx][1] == 'right' and self.actual_body[idx-1][1] == 'up') or (self.actual_body[idx][1] == 'down' and self.actual_body[idx-1][1] == 'left'):
                     tile = 'topleft'
                 elif (self.actual_body[idx][1] == 'right' and self.actual_body[idx-1][1] == 'down') or (self.actual_body[idx][1] == 'up' and self.actual_body[idx-1][1] == 'left'):
@@ -693,7 +691,7 @@ class Ghost(Snake):
                     tile = 'topright'
                 elif (self.actual_body[idx][1] == 'left' and self.actual_body[idx-1][1] == 'down') or (self.actual_body[idx][1] == 'up' and self.actual_body[idx-1][1] == 'right'):
                     tile = 'bottomright'
-                
+
                 graphic = self.body_graphics[tile]
             self.screen.blit(graphic, (x,y))
 
@@ -771,14 +769,13 @@ class Highscore:
     
     
     def save_highscore(self, EXPERT_MODE):
+        new_string = ''
         if not EXPERT_MODE:
-            new_string = ''
             for k, v in self.highscore:
                 new_string += f"{k}:{v}\n"
             with open(self.highscore_path, 'w') as file:
                 file.write(new_string)
         else:
-            new_string = ''
             for k, v in self.highscore_expert:
                 new_string += f"{k}:{v}\n"
             with open(self.highscore_path_expert, 'w') as file:
@@ -800,15 +797,14 @@ class Highscore:
             highscore_surface.fill('chartreuse3')
             highscore_surface.blit(trophy, ((WIDTH - trophy.get_width())//2, 0))
             for event in pg.event.get():
-                player_name = input_box.handle_input(event)
-                if player_name:
+                if player_name := input_box.handle_input(event):
                     running = False
                     self.load_highscore()
                     if EXPERT_MODE:
                         self.highscore_expert.append((snake.score, player_name))
                     else:
                         self.highscore.append((snake.score, player_name))
-            
+
             input_box.draw(highscore_surface)
             highscore_headline_1 =  pg.font.SysFont('Arial', 90, bold = True).render('Herzlichen Glückwunsch.', True, font_color)
             highscore_headline_1_outline =  pg.font.SysFont('Arial', 90, bold = True).render('Herzlichen Glückwunsch.', True, outline_color)
@@ -816,7 +812,7 @@ class Highscore:
             highscore_headline_2_outline =  pg.font.SysFont('Arial', 40, bold = True).render('Du hast dich für die Highscoreliste qualifiziert.', True, outline_color)
             highscore_headline_3 =  pg.font.SysFont('Arial', 40, bold = True).render('Bitte gib deinen Namen ein. (max. 20 Zeichen)', True, font_color)
             highscore_headline_3_outline =  pg.font.SysFont('Arial', 40, bold = True).render('Bitte gib deinen Namen ein. (max. 20 Zeichen)', True, outline_color)
-            
+
             self.outline(highscore_surface, highscore_headline_1_outline, (WIDTH - highscore_headline_1.get_width())//2, 50)
             highscore_surface.blit(highscore_headline_1, ((WIDTH - highscore_headline_1.get_width())//2, 50))
             self.outline(highscore_surface, highscore_headline_2_outline, (WIDTH - highscore_headline_2.get_width())//2, 150)
@@ -825,38 +821,38 @@ class Highscore:
             highscore_surface.blit(highscore_headline_3, ((WIDTH - highscore_headline_3.get_width())//2, 250))
             screen.blit(highscore_surface, (0,0))
             pg.display.flip()    
-        
+
         self.sort_highscore()
         self.save_highscore(EXPERT_MODE)
 
     def show_highscore(self, screen:pg.Surface, EXPERT_MODE = False):
         self.load_highscore()
-        
+
         if EXPERT_MODE:
             headline_text = 'Highscores Expertenmodus'
             highscore_liste = self.highscore_expert
         else:
             headline_text = 'Highscores normaler Modus'
             highscore_liste = self.highscore
-        
+
         # highscore_surf = pg.Surface((WIDTH,HEIGHT))
         highscore_surf = pg.image.load(f"{GRAPHICS_PATH}\\highscore\\Highscore wide.png").convert_alpha()
         text_color = pg.Color('black')
         outline_color = pg.Color('white')
         highscore_headline = pg.font.SysFont('chiller', 100, bold = True).render(headline_text, True, text_color)
         highscore_headline_outlined = pg.font.SysFont('chiller', 100, bold = True).render(headline_text, True, outline_color)
-        
+
         highscore_names = [pg.font.SysFont('Arial', 40, bold = True).render(name, True, text_color) for _ , name in highscore_liste]
         highscore_names_outlined = [pg.font.SysFont('Arial', 40, bold = True).render(name, True, outline_color) for _ , name in highscore_liste]
         symbol_label =  pg.font.SysFont('Arial', 40, bold = True).render("-", True, text_color)
         symbol_label_outlined =  pg.font.SysFont('Arial', 40, bold = True).render("-", True, outline_color)
         highscore_score = [pg.font.SysFont('Arial', 40, bold = True).render(f"{score} Punkte", True, text_color) for score, _ in highscore_liste]
         highscore_score_outlined = [pg.font.SysFont('Arial', 40, bold = True).render(f"{score} Punkte", True, outline_color) for score, _ in highscore_liste]
-        
+
         space_label = pg.font.SysFont('chiller', 60, bold = True).render('Leertaste drücken',True,pg.Color('red'))
         space_label_outlined = pg.font.SysFont('chiller', 60, bold = True).render('Leertaste drücken',True,pg.Color('white'))
         color_list = ['red', 'orange', 'yellow', 'darkgreen', 'blue', 'indigo', 'violet']
-        
+
         index = 0
         running = True
         while running:
@@ -865,7 +861,7 @@ class Highscore:
                     pg.quit
                     sys.exit()
                 elif event.type == pg.KEYDOWN: 
-                    if event.key == pg.K_SPACE or event.key == pg.K_ESCAPE:
+                    if event.key in [pg.K_SPACE, pg.K_ESCAPE]:
                         running = False
                 if event.type == self.event:
                     index += 1
@@ -918,15 +914,14 @@ class InputBox:
         if event.type == pg.QUIT:
             pg.quit()
             sys.exit()
-        
+
         if event.type == pg.KEYDOWN:
             if event.key == pg.K_RETURN:
                 return self.text[:-1]
             elif event.key == pg.K_BACKSPACE:
                 self.text = f"{self.text[:-2]}|"
-            else:
-                if len(self.text) < 21:
-                    self.text = f"{self.text[:-1]}{event.unicode}|"
+            elif len(self.text) < 21:
+                self.text = f"{self.text[:-1]}{event.unicode}|"
             self.text_surface = pg.font.SysFont('Arial', 60, bold = True).render(self.text, True, self.color)
             self.text_surface_outline = pg.font.SysFont('Arial', 60, bold = True).render(self.text, True, pg.Color('white'))
 
@@ -970,25 +965,25 @@ class GameMenu:
                     pg.quit()
                     sys.exit()
                 if event.type == pg.KEYDOWN:
-                    
+
                     if event.key == pg.K_RETURN or event.key == pg.K_SPACE:
                         if self.active_menu == 1:
                             running = False
                             self.is_active = False
                         elif self.active_menu == 2:
                             return 'reset'
-                        
+
                         elif self.active_menu == 3:
                             self.game.highscore.show_highscore(self.game.screen)
                             self.game.highscore.show_highscore(self.game.screen, True) # True  =Expertmode
-                        
+
                         elif self.active_menu == 4:
                             # self.game.options.show(self.screen, self.game.snake, self.game.in_progress)
                             self.game.options.show()
                         elif self.active_menu == 5:
                             pg.quit()
                             sys.exit()
-                    
+
                     elif event.key == pg.K_ESCAPE and self.game.in_progress:
                         running = False
                         self.is_active = False
@@ -999,18 +994,18 @@ class GameMenu:
                         if (self.active_menu > 1 and self.game.in_progress) or (self.active_menu > 2 and not self.game.in_progress):
                             self.active_menu -= 1
 
-            
-            
+
+
             # backgroundcolor for the menu
             self.menu_surface.fill('chartreuse3')
-            
+
             # menu_graphic = pg.image.load(f"{GRAPHICS_PATH}\\menu\\background.jpg")
             # pg.transform.scale(menu_graphic, (WIDTH,HEIGHT))
             # self.menu_surface.blit(menu_graphic, (0,0))
-            
-            
+
+
             self.menu_surface.blit(snake_image, (0,HEIGHT - snake_image.get_height()))
-            
+
             # build the menu
             menu_headline = pg.font.SysFont('chiller', 150, bold = True).render('Spielmenü', True, pg.Color('gray20'))
             menu_headline_outline = pg.font.SysFont('chiller', 150, bold = True).render('Spielmenü', True, outline_color)
@@ -1026,42 +1021,42 @@ class GameMenu:
             options_outline = pg.font.SysFont('chiller', 90, bold = True).render('Optionen', True, outline_color)
             exit_game = pg.font.SysFont('chiller', 90, bold = True).render('Spiel verlassen', True, font_color)
             exit_game_outline = pg.font.SysFont('chiller', 90, bold = True).render('Spiel verlassen', True, outline_color)
-            
-            
+
+
             # blit the menu fields
             self.outline(self.menu_surface, menu_headline_outline, (WIDTH - menu_headline.get_width())//2, 0)
             self.menu_surface.blit(menu_headline, ((WIDTH - menu_headline.get_width())//2, 0))
-            
+
             self.outline(self.menu_surface, info_outline, (WIDTH - info.get_width())//2, 170, 2)
             self.menu_surface.blit(info, ((WIDTH - info.get_width())//2, 170))
-            
+
             resume_placed = pg.Rect(0,0,0,0)
             if self.game.in_progress:
                 rect = resume.get_rect(right = 1150).x
                 self.outline(self.menu_surface, resume_outline, rect, 250)
-                resume_placed = self.menu_surface.blit(resume, (rect, 250))                      
+                resume_placed = self.menu_surface.blit(resume, (rect, 250))
             rect = new_game.get_rect(right = 1150).x
             self.outline(self.menu_surface, new_game_outline, rect, 350)
             new_game_placed = self.menu_surface.blit(new_game, (rect, 350))
-            
+
             rect = highscore_label.get_rect(right = 1150).x
             self.outline(self.menu_surface, highscore_label_outline, rect, 450)
             highscore_placed = self.menu_surface.blit(highscore_label, (rect, 450))
-            
+
             rect = options_label.get_rect(right = 1150).x
             self.outline(self.menu_surface, options_outline, rect, 550)
             options_placed = self.menu_surface.blit(options_label, (rect, 550))
-            
+
             rect = exit_game.get_rect(right = 1150).x
             self.outline(self.menu_surface, exit_game_outline, rect, 650)
             exit_game_placed = self.menu_surface.blit(exit_game, (rect, 650))
-            
+
             selected_menu = ['_', resume_placed, new_game_placed, highscore_placed, options_placed, exit_game_placed][self.active_menu]
-            if self.active_menu != 1 or (self.active_menu == 1 and self.game.in_progress):
+            if self.active_menu != 1 or self.game.in_progress:
                 x, y, width, height = selected_menu
                 pg.draw.rect(self.menu_surface, outline_color, (x-5, y, width+10, height), 3)
-            
-            
+
+
             self.game.screen.blit(self.menu_surface, (0,0))
             pg.display.flip()
 
